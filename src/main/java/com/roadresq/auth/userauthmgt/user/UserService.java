@@ -4,6 +4,8 @@ package com.roadresq.auth.userauthmgt.user;
 
 
 import com.roadresq.auth.admin.request.AdminUpdateRequest;
+import com.roadresq.auth.platformMemberShip.PlatformMemberShipService;
+import com.roadresq.auth.platformMemberShip.PlatformMemberShip;
 import com.roadresq.auth.userauthmgt.user.request.*;
 import com.roadresq.auth.userauthmgt.user.response.UserCreateResponse;
 import com.roadresq.auth.userauthmgt.user.response.UserForgotPasswordResponse;
@@ -13,14 +15,19 @@ import com.roadresq.auth.userauthmgt.userotp.UserOtpService;
 import com.roadresq.auth.userauthmgt.userotp.UserOtpType;
 import com.roadresq.auth.utils.ApiResponseMessages;
 import com.roadresq.auth.utils.Gender;
+import com.roadresq.auth.utils.ServicePlatformType;
 import com.roadresq.auth.utils.appsecurity.JwtService;
 import com.roadresq.auth.utils.emailsenderservice.EmailSenderService;
 import com.roadresq.auth.utils.exception.*;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
@@ -30,24 +37,50 @@ import java.util.*;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class UserService {
 
 	private final UserRepository userRepository;
+	private final MongoTemplate mongoTemplate;
 	private final UserOtpService userOtpService;
 	@Qualifier("mailgunEmailSenderServiceImpl")
 	private final EmailSenderService emailSenderService;
 	private final BCryptPasswordEncoder bCryptPasswordEncoder = new BCryptPasswordEncoder();
 	private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 	private final JwtService jwtService;
+	private final PlatformMemberShipService platformMemberShipService;
 
-
-	public UserService(UserRepository userRepository, UserOtpService userOtpService, JwtService jwtService,
-					   EmailSenderService emailSenderService) {
-		this.userRepository = userRepository;
-		this.userOtpService = userOtpService;
-		this.emailSenderService = emailSenderService;
-		this.jwtService = jwtService;
+	public ServicePlatformType getRequestedServicePlatformType() {
+		var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+		if (!(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet)) {
+			throw new InvalidInputException("A valid X-Service-Type header is required");
+		}
+		var values = java.util.Collections.list(servlet.getRequest().getHeaders("X-Service-Type"));
+		if (values.size() != 1) {
+			throw new InvalidInputException("A valid X-Service-Type header is required");
+		}
+		try {
+			return ServicePlatformType.valueOf(values.get(0));
+		} catch (IllegalArgumentException exception) {
+			throw new InvalidInputException("A valid X-Service-Type header is required");
+		}
 	}
+
+	public void requirePlatformAccess(User user, UserType role, ServicePlatformType platform) {
+		if (user == null || user.isDeleted() || !user.isActive() || !user.isVerified()
+				|| user.getUserType() != role || platform == null) {
+			throw new com.roadresq.auth.utils.exception.UnauthorizedException("Account is inactive or unavailable");
+		}
+		if (!platformMemberShipService.hasActivePlatformMemberShip(user.getId(), role, platform)) {
+			throw new InvalidOperationException("An active membership for the requested platform is required");
+		}
+	}
+
+
+
+
+
+
 
 	/**
 	 * Updates the provided user's information in the database.
@@ -323,6 +356,7 @@ public class UserService {
 		userOtpService.validateOtp(userResetPasswordRequest.otp(), user.getId(), UserOtpType.PASSWORD_RESET, true);
 
 		user.setPassword(passwordEncoder.encode(userResetPasswordRequest.newPassword()));
+		user.setPasswordChangedAt(LocalDateTime.now());
 		updateUser(user);
 	}
 
@@ -386,6 +420,7 @@ public class UserService {
 			throw new InvalidPasswordException(ApiResponseMessages.ERROR_USER_SAME_PASSWORD);
 		}
 		user.setPassword(bCryptPasswordEncoder.encode(passwordChangeRequest.newPassword()));
+		user.setPasswordChangedAt(LocalDateTime.now());
 		updateUser(user);
 	}
 
@@ -478,7 +513,7 @@ public class UserService {
 
 
 	public UserCreateResponse seedSuperAdmin(UserCreateRequest userCreateRequest) {
-		System.out.println("seedSuperAdmin:<<<<<<<<<<<<<<<<<<<<< " + userCreateRequest);
+		log.info("Creating configured super admin account");
 		User user = User.builder()
 				.firstName(userCreateRequest.firstName())
 				.lastName(userCreateRequest.lastName())
@@ -689,7 +724,113 @@ public class UserService {
 	}
 
 
-    public void save(User updatedUser) {
+	public void save(User updatedUser) {
 		userRepository.save(updatedUser);
-    }
+	}
+
+	public List<User> findUsers(Query query) {
+		if (query == null) {
+			throw new InvalidInputException("User query is required");
+		}
+		return mongoTemplate.find(query, User.class);
+	}
+
+	// Called by the customer/vendor verification flow only after its OTP succeeds.
+	private PlatformMemberShip createPlatformMemberShip(
+			String userId,
+			UserType userType,
+			ServicePlatformType servicePlatformType
+	) {
+		User user = requireActiveUserForPlatform(userId);
+
+		return platformMemberShipService.createPlatformMemberShip(
+				user.getId(),
+				userType,
+				servicePlatformType
+		);
+	}
+
+	public boolean hasActivePlatformMemberShip(
+			String userId,
+			UserType userType,
+			ServicePlatformType servicePlatformType
+	) {
+		if (userId == null || userId.isBlank()) {
+			throw new InvalidInputException("User ID is required");
+		}
+
+		User user = userRepository.findById(userId.trim()).orElse(null);
+
+		if (user == null || user.isDeleted() || !user.isActive() || !user.isVerified() || user.getUserType() != userType) {
+			return false;
+		}
+
+		return platformMemberShipService.hasActivePlatformMemberShip(
+				user.getId(),
+				userType,
+				servicePlatformType
+		);
+	}
+
+	public PlatformMemberShip updatePlatformMemberShip(String id, boolean isActive) {
+		PlatformMemberShip memberShip = platformMemberShipService.getPlatformMemberShipById(id);
+
+		if (isActive) {
+			requireActiveUserForPlatform(memberShip.getUserId());
+		}
+
+		return platformMemberShipService.updatePlatformMemberShip(id, isActive);
+	}
+
+	private User requireActiveUserForPlatform(String userId) {
+		if (userId == null || userId.isBlank()) {
+			throw new InvalidInputException("User Identifier is required");
+		}
+
+		User user = userRepository.findById(userId.trim())
+				.orElseThrow(() -> new ResourceNotFoundException("User account not found"));
+
+		if (user.isDeleted() || !user.isActive() || !user.isVerified()) {
+			throw new InvalidOperationException("User account not active and verified");
+		}
+
+		return user;
+	}
+
+	@Transactional
+	public User verifyOtp(
+			UserVerifyOtpRequest userVerifyOtpRequest,
+			ServicePlatformType servicePlatformType
+	) {
+		if (userVerifyOtpRequest == null || servicePlatformType == null) {
+			throw new InvalidInputException("Verification request and platform type are required");
+		}
+
+		if (userVerifyOtpRequest.userOtpType() != UserOtpType.ACCOUNT_ACTIVATION) {
+			throw new InvalidInputException("Account activation OTP is required");
+		}
+
+		User pendingUser = getUserByEmailAddress(userVerifyOtpRequest.userEmail());
+
+		if (pendingUser.getUserType() != UserType.CUSTOMER && pendingUser.getUserType() != UserType.VENDOR) {
+			throw new InvalidInputException("Only customer and vendor platform memberships can be created");
+		}
+
+		if (pendingUser.isVerified()) {
+			throw new InvalidOperationException("Account is already verified");
+		}
+
+		User savedUser = verifyOtp(userVerifyOtpRequest);
+
+		createPlatformMemberShip(
+				savedUser.getId(),
+				savedUser.getUserType(),
+				servicePlatformType
+		);
+
+		log.info("Account OTP verified and platform membership created: platform={}, role={}",
+				servicePlatformType, savedUser.getUserType());
+
+		return savedUser;
+	}
 }

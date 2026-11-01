@@ -9,6 +9,7 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Document(collection = "customers")
 @Data
@@ -25,4 +26,5 @@ public class Customer extends BaseEntity {
     private boolean marketingEmailsEnabled;
     private LocalDateTime lastLoginAt;
     private LocalDateTime deletedAt;
+
 }

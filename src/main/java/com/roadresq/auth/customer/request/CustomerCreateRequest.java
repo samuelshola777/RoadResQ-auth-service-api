@@ -12,6 +12,9 @@ public record CustomerCreateRequest(
 
         @NotBlank
         @Size(min = 8, max = 100)
-        String password
+        String password,
+
+        @Size(max = 100) String firstName,
+        @Size(max = 100) String lastName
 ) {
 }

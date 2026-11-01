@@ -31,6 +31,8 @@ public class DefaultRouteValidator {
     public static final List<Pattern> ADMIN_ENDPOINTS = routes(
             "/api/v1/product/private",
             "/api/v1/admin/private",
+            "/api/v1/customer/private/admin",
+            "/api/v1/vendor/private/admin",
             "/api/v1/files/private",
             "/api/v1/teams/private",
             "/api/v1/players/private",
@@ -55,6 +57,21 @@ public class DefaultRouteValidator {
         );
     }
 
+    public Predicate<HttpServletRequest> isCustomerSecured = req -> {
+        String uri = req.getRequestURI();
+        return (uri.equals("/api/v1/customer/private") || uri.startsWith("/api/v1/customer/private/"))
+                && !uri.equals("/api/v1/customer/private/admin")
+                && !uri.startsWith("/api/v1/customer/private/admin/");
+    };
+
+    public Predicate<HttpServletRequest> isVendorSecured = req -> {
+        String uri = req.getRequestURI();
+        return (uri.equals("/api/v1/vendor/private")
+                || uri.startsWith("/api/v1/vendor/private/"))
+                && !uri.equals("/api/v1/vendor/private/admin")
+                && !uri.startsWith("/api/v1/vendor/private/admin/");
+    };
+
     public Predicate<HttpServletRequest> isAdminSecured = req ->
             matches(req, ADMIN_ENDPOINTS, "admin");
 
@@ -66,12 +83,6 @@ public class DefaultRouteValidator {
         boolean matched = patterns.stream()
                 .anyMatch(pattern -> pattern.matcher(uri).matches());
 
-        if (log.isDebugEnabled()) {
-            log.debug("[DRV] group={}, uri={}, matched={}", groupName, uri, matched);
-        }
-
         return matched;
     }
 }
-
-

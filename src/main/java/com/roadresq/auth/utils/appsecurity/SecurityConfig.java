@@ -1,7 +1,7 @@
 package com.roadresq.auth.utils.appsecurity;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -22,193 +22,116 @@ import java.util.Arrays;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@Slf4j
 public class SecurityConfig {
 
-    private static final Logger log =
-            LoggerFactory.getLogger(SecurityConfig.class);
-
     private final ApiSecurityFilter apiSecurityFilter;
+    private final JwtFilter jwtFilter;
     private final RestAuthEntryPoint authEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
 
     public SecurityConfig(
             ApiSecurityFilter apiSecurityFilter,
+            JwtFilter jwtFilter,
             RestAuthEntryPoint authEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler
     ) {
-        log.info("SecurityConfig constructor initialized");
-
         this.apiSecurityFilter = apiSecurityFilter;
+        this.jwtFilter = jwtFilter;
         this.authEntryPoint = authEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
+        log.info("SecurityConfig dependencies initialized");
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(
-            HttpSecurity http
-    ) throws Exception {
-        log.info("Initializing SecurityFilterChain");
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        log.info("Configuring Spring Security Filter Chain");
 
         http
-                .csrf(csrf -> {
-                    csrf.disable();
-                    log.debug("CSRF disabled");
-                })
-                .cors(cors -> {
-                    cors.configurationSource(
-                            corsConfigurationSource()
-                    );
-                    log.debug("CORS configuration source set");
-                })
-                .sessionManagement(sm -> {
-                    sm.sessionCreationPolicy(
-                            SessionCreationPolicy.STATELESS
-                    );
-                    log.debug("Session management set to stateless");
-                })
-                .exceptionHandling(eh -> {
-                    eh.authenticationEntryPoint(authEntryPoint)
-                            .accessDeniedHandler(
-                                    accessDeniedHandler
-                            );
-
-                    log.debug("Exception handlers configured");
-                })
-                .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers(
-                                    HttpMethod.OPTIONS,
-                                    "/**"
-                            )
-                            .permitAll()
-                            .requestMatchers(
-                                    "/api/v1/market-place/public/**",
-                                    "/magik/public/**",
-                                    "/api/v1/utilities/public/**",
-                                    "/api/v1/utilities/public",
-                                    "/swagger-ui.html",
-                                    "/swagger-ui/**",
-                                    "/api-docs/**",
-                                    "/v3/api-docs/**",
-                                    "/v3/api-docs",
-                                    "/v3/api-docs.yaml",
-                                    "/api/v1/admin/public",
-                                    "/api/v1/admin/public/**",
-                                    "/api/v1/customer/public",
-                                    "/api/v1/customer/public/**",
-                                    "/api/v1/product/public",
-                                    "/api/v1/product/public/**",
-                                    "/ws",
-                                    "/ws/**",
-                                    "/ws-native",
-                                    "/ws-native/**",
-                                    "/ws-sockjs",
-                                    "/ws-sockjs/**",
-                                    "/api/v1/admin/auth/public/**",
-                                    "/api/v1/players/public/**",
-                                    "/api/v1/players/public",
-                                    "/api/v1/player-stats/public/**",
-                                    "/api/v1/gallery/public/**",
-                                    "/api/v1/gallery/public",
-                                    "/api/v1/posts/public/**",
-                                    "/api/v1/posts/public",
-                                    "/api/v1/system/public/**",
-                                    "/api/v1/teams/public/**",
-                                    "/api/v1/teams/public",
-                                    "/api/v1/competitions/public/**",
-                                    "/api/v1/competitions/public",
-                                    "/api/v1/admin/auth/public/forgot-password",
-                                    "/api/v1/admin/auth/public/reset-password"
-                            )
-                            .permitAll()
-                            .anyRequest()
-                            .authenticated();
-
-                    log.info("Authorization rules set");
-                })
-                .addFilterBefore(
-                        apiSecurityFilter,
-                        UsernamePasswordAuthenticationFilter.class
-                );
-
-        log.info(
-                "ApiSecurityFilter added before UsernamePasswordAuthenticationFilter"
-        );
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(eh -> eh
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(
+                                "/api/v1/utilities/public/**",
+                                "/api/v1/utilities/public",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/api-docs/**",
+                                "/v3/api-docs/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs.yaml",
+                                "/api/v1/admin/public",
+                                "/api/v1/admin/public/**",
+                                "/api/v1/customer/public",
+                                "/api/v1/customer/public/**",
+                                "/api/v1/vendor/public",
+                                "/api/v1/vendor/public/**",
+                                "/ws",
+                                "/ws/**",
+                                "/ws-native",
+                                "/ws-native/**",
+                                "/ws-sockjs",
+                                "/ws-sockjs/**",
+                                "/api/v1/admin/auth/public/**",
+                                "/api/v1/admin/auth/public/forgot-password",
+                                "/api/v1/admin/auth/public/reset-password"
+                        ).permitAll()
+                        .anyRequest().authenticated()
+                )
+                .addFilterBefore(apiSecurityFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(jwtFilter, ApiSecurityFilter.class);
 
         SecurityFilterChain chain = http.build();
-
-        log.info("SecurityFilterChain created successfully");
-
+        log.info("SecurityFilterChain built successfully: Stateless, CSRF disabled, Public/Protected routes configured");
         return chain;
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration cfg
-    ) throws Exception {
-        log.debug("AuthenticationManager bean created");
+    public FilterRegistrationBean<ApiSecurityFilter> apiSecurityRegistration() {
+        var registration = new FilterRegistrationBean<>(apiSecurityFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<JwtFilter> jwtRegistration() {
+        var registration = new FilterRegistrationBean<>(jwtFilter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception {
+        log.info("Initializing AuthenticationManager bean");
         return cfg.getAuthenticationManager();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration apiCors =
-                new CorsConfiguration();
+        log.info("Configuring CORS rules for API and WebSocket endpoints");
 
-        apiCors.setAllowedOriginPatterns(
-                Arrays.asList("*")
-        );
-
-        apiCors.setAllowedMethods(
-                Arrays.asList(
-                        "GET",
-                        "POST",
-                        "PUT",
-                        "DELETE",
-                        "OPTIONS",
-                        "PATCH"
-                )
-        );
-
-        apiCors.setAllowedHeaders(
-                Arrays.asList("*")
-        );
-
+        CorsConfiguration apiCors = new CorsConfiguration();
+        apiCors.setAllowedOriginPatterns(Arrays.asList("*"));
+        apiCors.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        apiCors.setAllowedHeaders(Arrays.asList("*"));
         apiCors.setAllowCredentials(true);
 
-        CorsConfiguration wsCors =
-                new CorsConfiguration();
-
-        wsCors.setAllowedOriginPatterns(
-                Arrays.asList("*")
-        );
-
-        wsCors.setAllowedMethods(
-                Arrays.asList("GET", "OPTIONS")
-        );
-
-        wsCors.setAllowedHeaders(
-                Arrays.asList("*")
-        );
-
+        CorsConfiguration wsCors = new CorsConfiguration();
+        wsCors.setAllowedOriginPatterns(Arrays.asList("*"));
+        wsCors.setAllowedMethods(Arrays.asList("GET", "OPTIONS"));
+        wsCors.setAllowedHeaders(Arrays.asList("*"));
         wsCors.setAllowCredentials(true);
 
-        UrlBasedCorsConfigurationSource src =
-                new UrlBasedCorsConfigurationSource();
-
-        src.registerCorsConfiguration(
-                "/api/**",
-                apiCors
-        );
-
-        src.registerCorsConfiguration(
-                "/ws/**",
-                wsCors
-        );
-
-        src.registerCorsConfiguration(
-                "/ws-sockjs/**",
-                wsCors
-        );
+        UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
+        src.registerCorsConfiguration("/api/**", apiCors);
+        src.registerCorsConfiguration("/ws/**", wsCors);
+        src.registerCorsConfiguration("/ws-sockjs/**", wsCors);
 
         return src;
     }

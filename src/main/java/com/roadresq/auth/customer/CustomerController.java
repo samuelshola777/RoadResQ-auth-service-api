@@ -94,6 +94,13 @@ public class CustomerController {
         ));
     }
 
+    @GetMapping("/private/platform-access")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<ApiResponse<CustomerResponse>> checkPlatformAccess(
+            @RequestAttribute("validatedProfile") CustomerResponse profile) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Platform access verified", profile));
+    }
+
     @GetMapping("/private/profile")
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<ApiResponse<CustomerResponse>> getProfile() {

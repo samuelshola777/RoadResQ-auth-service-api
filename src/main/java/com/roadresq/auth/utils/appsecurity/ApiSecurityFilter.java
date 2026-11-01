@@ -1,486 +1,211 @@
 package com.roadresq.auth.utils.appsecurity;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Collections;
 import java.util.List;
-import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ApiSecurityFilter extends OncePerRequestFilter {
-
-    private static final Logger log =
-            LoggerFactory.getLogger(ApiSecurityFilter.class);
 
     private final JwtService jwtService;
     private final ObjectMapper objectMapper;
+    private final RouteValidator routeValidator;
+    private final com.roadresq.auth.customer.CustomerService customerService;
+    private final com.roadresq.auth.vendor.VendorService vendorService;
+    private final com.roadresq.auth.admin.AdminService adminService;
 
     @Value("${app.api-key}")
     private String apiKey;
 
-    private static final List<Pattern> PUBLIC_PATTERNS =
-            Arrays.asList(
-                    Pattern.compile(
-                            "^/api/v1/product/public($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/customer/public(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/admin/public/login"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/utilities/public($|/.*)"
-                    ),
-                    Pattern.compile(
-                            "^/swagger-ui\\.html$"
-                    ),
-                    Pattern.compile(
-                            "^/swagger-ui/?$"
-                    ),
-                    Pattern.compile(
-                            "^/swagger-ui/.*$"
-                    ),
-                    Pattern.compile(
-                            "^/v3/api-docs($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/api-docs($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/ws($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/ws-native($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/ws-sockjs($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/webhook/stripe($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/oauth/public($|/.*)$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/admin/public/forgot-password"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/admin/public/reset-password"
-                    )
-            );
-
     @Override
-    protected void doFilterInternal(
-            HttpServletRequest req,
-            HttpServletResponse res,
-            FilterChain chain
-    ) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                    FilterChain chain) throws ServletException, IOException {
 
-        log.info(
-                "[M01] ENTER {} {}",
-                req.getMethod(),
-                req.getRequestURI()
-        );
+        log.info("ApiSecurityFilter processing request: {} {}", request.getMethod(), request.getRequestURI());
 
-        try {
-            if (isPublicEndpoint(req)) {
-                log.info(
-                        "[M01-PUB] Public endpoint: {}",
-                        req.getRequestURI()
-                );
-
-                chain.doFilter(req, res);
-                return;
-            }
-
-            validateApiKey(req);
-
-            String token =
-                    resolveBearerOrRealtimeQueryToken(req);
-
-            if (token == null) {
-                log.info(
-                        "[M01-TOKEN] Missing token: {}",
-                        req.getRequestURI()
-                );
-
-                sendErrorResponse(
-                        res,
-                        HttpStatus.UNAUTHORIZED,
-                        "Missing token"
-                );
-
-                return;
-            }
-
-            if (!jwtService.isTokenValid(token)) {
-                log.info(
-                        "[M01-TOKEN] Invalid or expired token"
-                );
-
-                sendErrorResponse(
-                        res,
-                        HttpStatus.UNAUTHORIZED,
-                        "Session expired or invalid please login again"
-                );
-
-                return;
-            }
-
-            Claims claims =
-                    jwtService.extractAllClaims(token);
-
-            String email = claims.getSubject();
-
-            setUserAttributes(req, claims);
-
-            @SuppressWarnings("unchecked")
-            var authList =
-                    (List<Object>) claims.get("auth");
-
-            var authorities =
-                    authList == null
-                            ? List
-                            .<org.springframework.security.core.authority.SimpleGrantedAuthority>of()
-                            : authList.stream()
-                            .map(Object::toString)
-                            .map(
-                                    org.springframework.security.core.authority.SimpleGrantedAuthority::new
-                            )
-                            .toList();
-
-            var authentication =
-                    new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                            email,
-                            null,
-                            authorities
-                    );
-
-            org.springframework.security.core.context.SecurityContextHolder
-                    .getContext()
-                    .setAuthentication(authentication);
-
-            log.info(
-                    "[M01-AUTH] Security context set; authorities={}",
-                    authorities.size()
-            );
-
-            chain.doFilter(req, res);
-
-            log.info(
-                    "[M01-END] Completed {}",
-                    req.getRequestURI()
-            );
-
-        } catch (SecurityException se) {
-            log.info(
-                    "[M01-ERR] Authentication rejected"
-            );
-
-            sendErrorResponse(
-                    res,
-                    HttpStatus.UNAUTHORIZED,
-                    se.getMessage()
-            );
-
-        } catch (Exception ex) {
-            log.error(
-                    "[M01-EX] Request processing failed",
-                    ex
-            );
-
-            sendErrorResponse(
-                    res,
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Internal server error"
-            );
-        }
-    }
-
-    private static String pathWithinApplication(
-            HttpServletRequest req
-    ) {
-        String uri = req.getRequestURI();
-
-        if (uri == null) {
-            return "/";
-        }
-
-        String ctx = req.getContextPath();
-
-        if (
-                ctx != null &&
-                        !ctx.isEmpty() &&
-                        uri.startsWith(ctx)
-        ) {
-            uri = uri.substring(ctx.length());
-        }
-
-        return uri.isEmpty() ? "/" : uri;
-    }
-
-    private static boolean isWebSocketSockJsPath(
-            String path
-    ) {
-        if (
-                path.contains("ws") ||
-                        path.contains("ws-native") ||
-                        path.contains("ws-sockjs")
-        ) {
-            return true;
-        }
-
-        return "/ws".equals(path) ||
-                path.startsWith("/ws/") ||
-                "/ws-native".equals(path) ||
-                path.startsWith("/ws-native/") ||
-                "/ws-sockjs".equals(path) ||
-                path.startsWith("/ws-sockjs/");
-    }
-
-    private static boolean isRealtimeSsePath(
-            String path
-    ) {
-        return "/api/v1/realtime/private/stream"
-                .equals(path);
-    }
-
-    private String resolveBearerOrRealtimeQueryToken(
-            HttpServletRequest req
-    ) {
-        String header = req.getHeader("Authorization");
-
-        if (
-                header != null &&
-                        header.startsWith("Bearer ")
-        ) {
-            return header.substring(7);
-        }
-
-        String path = pathWithinApplication(req);
-
-        if (
-                isWebSocketSockJsPath(path) ||
-                        isRealtimeSsePath(path)
-        ) {
-            String token = req.getParameter("token");
-
-            if (
-                    token != null &&
-                            !token.isBlank()
-            ) {
-                String value = token.trim();
-
-                return value.startsWith("Bearer ")
-                        ? value.substring(7).trim()
-                        : value;
-            }
-        }
-
-        return null;
-    }
-
-    private boolean isPublicEndpoint(
-            HttpServletRequest req
-    ) {
-        String path = pathWithinApplication(req);
-
-        if (isWebSocketSockJsPath(path)) {
-            log.info(
-                    "[M02] WebSocket/SockJS path: {}",
-                    path
-            );
-
-            return true;
-        }
-
-        boolean match = PUBLIC_PATTERNS.stream()
-                .anyMatch(pattern ->
-                        pattern.matcher(path).matches()
-                );
-
-        log.info(
-                "[M02] path={} public={}",
-                path,
-                match
-        );
-
-        return match;
-    }
-
-    private void validateApiKey(
-            HttpServletRequest req
-    ) {
-        if (isPublicEndpoint(req)) {
+        if (routeValidator.isPublic.test(request)) {
+            log.info("Bypassing security for public route: {}", request.getRequestURI());
+            chain.doFilter(request, response);
             return;
         }
 
-        String provided = resolveApiKey(req);
+        Claims claims;
+        List<String> roles;
 
-        if (
-                provided == null ||
-                        provided.isBlank()
-        ) {
-            throw new SecurityException(
-                    "Request could not be authenticated."
-            );
+        try {
+            // 1. Validate API Key
+            String providedApiKey = singleHeader(request, "X-Api-Key");
+            if (providedApiKey == null || apiKey == null || apiKey.isBlank()
+                    || !MessageDigest.isEqual(apiKey.getBytes(StandardCharsets.UTF_8), providedApiKey.getBytes(StandardCharsets.UTF_8))) {
+                log.info("Security check failed: Invalid or missing API key for URI: {}", request.getRequestURI());
+                reject(response, 401, "Invalid request source");
+                return;
+            }
+
+            // 2. Extract and Validate Bearer Token
+            String authorization = singleHeader(request, "Authorization");
+            if (authorization == null || !authorization.startsWith("Bearer ")) {
+                log.info("Security check failed: Missing Bearer token for URI: {}", request.getRequestURI());
+                reject(response, 401, "A Bearer access token is required");
+                return;
+            }
+            claims = jwtService.parse(authorization.substring(7).trim());
+
+            // 3. Validate Platform Access
+            String platform = singleHeader(request, "X-Service-Type");
+            if (!validPlatform(platform) || !platform.equals(claims.get("servicePlatformType", String.class))) {
+                log.info("Security check failed: Token platform does not match requested platform '{}' for URI: {}", platform, request.getRequestURI());
+                reject(response, 403, "Token does not permit access to the requested platform");
+                return;
+            }
+
+            // 4. Validate Identity Claims
+            String role = claims.get("userType", String.class);
+            String profileClaim = switch (role == null ? "" : role) {
+                case "VENDOR" -> "vendorId";
+                case "CUSTOMER" -> "customerId";
+                case "ADMIN" -> "adminId";
+                default -> "";
+            };
+
+            if (profileClaim.isEmpty() || blank(claims.get("userId", String.class)) || blank(claims.get(profileClaim, String.class))) {
+                log.info("Security check failed: Invalid or missing identity claims for URI: {}", request.getRequestURI());
+                reject(response, 401, "Invalid account identity");
+                return;
+            }
+
+            // 5. Validate Roles
+            Object authorities = claims.get("auth");
+            if (!(authorities instanceof List<?> values) || values.stream().anyMatch(value -> !(value instanceof String))) {
+                log.info("Security check failed: Invalid roles format for URI: {}", request.getRequestURI());
+                reject(response, 401, "Invalid account roles");
+                return;
+            }
+            roles = values.stream().map(Object::toString).toList();
+
+            if (!roles.contains("ROLE_" + role)) {
+                log.info("Security check failed: Required role ROLE_{} missing for URI: {}", role, request.getRequestURI());
+                reject(response, 403, "Required account role is missing");
+                return;
+            }
+
+        } catch (RuntimeException exception) {
+            log.info("Security check failed: Invalid or expired token for URI: {}. Reason: {}", request.getRequestURI(), exception.getMessage());
+            reject(response, 401, "Invalid or expired access token");
+            return;
         }
 
-        if (!provided.equals(apiKey)) {
-            throw new SecurityException(
-                    "Request could not be authenticated."
-            );
-        }
-
-        log.info("[M03] API key validated");
-    }
-
-    private String resolveApiKey(
-            HttpServletRequest req
-    ) {
-        String provided = req.getHeader("X-API-Key");
-
-        if (
-                (provided == null || provided.isBlank()) &&
-                        isRealtimeSsePath(
-                                pathWithinApplication(req)
-                        )
-        ) {
-            provided = req.getParameter("apiKey");
-        }
-
-        return provided;
-    }
-
-    private void validateJwtToken(
-            HttpServletRequest req
-    ) {
-        String authHeader =
-                req.getHeader("Authorization");
-
-        if (
-                authHeader == null ||
-                        !authHeader.startsWith("Bearer ")
-        ) {
-            throw new SecurityException(
-                    "Authentication is required"
-            );
-        }
-
-        String token = authHeader.substring(7);
-
-        if (!jwtService.isTokenValid(token)) {
-            throw new SecurityException(
-                    "Request could not be authenticated."
-            );
-        }
-
-        setUserAttributes(req, token);
-    }
-
-    private void setUserAttributes(
-            HttpServletRequest req,
-            String token
-    ) {
-        Claims claims =
-                jwtService.extractAllClaims(token);
-
-        if (claims == null) {
-            throw new SecurityException(
-                    "Invalid token payload"
-            );
-        }
-
-        setUserAttributes(req, claims);
-    }
-
-    private void setUserAttributes(
-            HttpServletRequest req,
-            Claims claims
-    ) {
-        if (claims == null) {
-            throw new SecurityException(
-                    "Invalid token payload"
-            );
-        }
-
-        req.setAttribute(
-                "userId",
-                claims.get("userId")
+        // 6. Set Security Context
+        var authentication = new UsernamePasswordAuthenticationToken(
+                claims.getSubject(),
+                null,
+                roles.stream().map(SimpleGrantedAuthority::new).toList()
         );
 
-        req.setAttribute(
-                "email",
-                claims.getSubject()
-        );
+        SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        req.setAttribute(
-                "userRole",
-                claims.get("userRole")
-        );
+        request.setAttribute("validatedClaims", claims);
+        request.setAttribute("userId", claims.get("userId"));
+        request.setAttribute("userType", claims.get("userType"));
+        request.setAttribute("userRole", claims.get("userRole"));
+        request.setAttribute("email", claims.getSubject());
 
-        req.setAttribute(
-                "userType",
-                claims.get("userType")
-        );
+        log.info("Token validated successfully for user: {}, role: {}", claims.getSubject(), claims.get("userType"));
 
-        if (claims.get("clientId") != null) {
-            req.setAttribute(
-                    "clientId",
-                    claims.get("clientId")
-            );
+        try {
+            // 7. Check Live Database Access
+            if (!checkCurrentAccess(request, response, claims)) return;
+
+            log.info("Access granted to URI: {}", request.getRequestURI());
+            chain.doFilter(request, response);
+
+        } finally {
+            SecurityContextHolder.clearContext();
         }
-
-        log.info("[M05] User attributes set");
     }
 
-    private void sendErrorResponse(
-            HttpServletResponse res,
-            HttpStatus status,
-            String message
-    ) throws IOException {
-        res.setStatus(status.value());
+    private boolean checkCurrentAccess(HttpServletRequest request, HttpServletResponse response, Claims claims) throws IOException {
+        try {
+            String userId = claims.get("userId", String.class);
+            boolean matches;
 
-        res.setContentType(
-                MediaType.APPLICATION_JSON_VALUE
-        );
+            switch (claims.get("userType", String.class)) {
+                case "CUSTOMER" -> {
+                    var profile = customerService.getCurrentProfile();
+                    matches = userId.equals(profile.userId()) && claims.get("customerId", String.class).equals(profile.customerId());
+                    request.setAttribute("validatedProfile", profile);
+                }
+                case "VENDOR" -> {
+                    var profile = vendorService.getCurrentProfile();
+                    matches = userId.equals(profile.userId()) && claims.get("vendorId", String.class).equals(profile.vendorId());
+                    request.setAttribute("validatedProfile", profile);
+                }
+                case "ADMIN" -> {
+                    var profile = adminService.getCurrentAdminProfile();
+                    matches = userId.equals(profile.userId()) && claims.get("adminId", String.class).equals(profile.adminId());
+                    request.setAttribute("validatedProfile", profile);
+                }
+                default -> matches = false;
+            }
 
-        objectMapper.writeValue(
-                res.getWriter(),
-                new ApiResponse(
-                        false,
-                        message,
-                        null
-                )
-        );
+            if (!matches) {
+                log.info("Access denied: Token identity does not match live database account for URI: {}", request.getRequestURI());
+                reject(response, 403, "Token identity does not match the current account");
+                return false;
+            }
+            return true;
+
+        } catch (com.roadresq.auth.utils.exception.UnauthorizedException exception) {
+            log.info("Access denied: Account access is inactive for URI: {}", request.getRequestURI());
+            reject(response, 401, "Account access is inactive or unavailable");
+            return false;
+        } catch (com.roadresq.auth.utils.exception.InvalidOperationException | com.roadresq.auth.utils.exception.ResourceNotFoundException exception) {
+            log.info("Access denied: Platform access is inactive for URI: {}", request.getRequestURI());
+            reject(response, 403, "Platform access is inactive or unavailable");
+            return false;
+        } catch (RuntimeException exception) {
+            log.info("Access check failed: Account verification temporarily unavailable for URI: {}. Reason: {}", request.getRequestURI(), exception.getMessage());
+            reject(response, 503, "Account verification is temporarily unavailable");
+            return false;
+        }
     }
 
-    private String preview(String token) {
-        if (token == null) {
-            return "null";
-        }
+    private boolean validPlatform(String value) {
+        return value != null && List.of("ROAD_RESQ", "HOME_SERVICE", "PICK_DROP_OFF", "HOME_CHOP_CART").contains(value);
+    }
 
-        int keep = Math.min(6, token.length());
+    private String singleHeader(HttpServletRequest request, String name) {
+        List<String> values = Collections.list(request.getHeaders(name));
+        return values.size() == 1 && !values.get(0).isBlank() ? values.get(0) : null;
+    }
 
-        return token.substring(0, keep) +
-                "...len=" +
-                token.length();
+    private boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private void reject(HttpServletResponse response, int status, String message) throws IOException {
+        log.info("Protected request rejected. Status: {}, Message: {}", status, message);
+        response.setStatus(status);
+        response.setContentType("application/json");
+        objectMapper.writeValue(response.getWriter(), new ApiResponse<>(false, message, null));
     }
 }

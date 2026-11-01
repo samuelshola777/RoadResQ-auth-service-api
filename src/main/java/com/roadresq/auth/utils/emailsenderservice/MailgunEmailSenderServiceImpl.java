@@ -130,10 +130,7 @@ public class MailgunEmailSenderServiceImpl implements EmailSenderService {
     private void deliver(
             String sender, String recipient, String subject, String body, boolean html
     ) {
-        if (!mailEnabled) {
-            throw new ErrorProcessingRequestException(
-                    "Email sending is disabled. Configure and enable the email service.");
-        }
+
 
         String from = isBlank(sender) ? configuredSender : sender;
         if (isBlank(from) || isBlank(recipient) || isBlank(subject) || body == null
@@ -159,6 +156,7 @@ public class MailgunEmailSenderServiceImpl implements EmailSenderService {
         } catch (MessagingException | MailException | IllegalArgumentException exception) {
             // Do not log message bodies, OTPs, passwords or SMTP credentials.
             log.warn("Email delivery failed: {}", exception.getClass().getSimpleName());
+            System.out.println(exception.getMessage()+" Email Sending Exception 😢😢😢😢😢");
             throw new ErrorProcessingRequestException(
                     "Unable to send email. Please try again later.");
         }

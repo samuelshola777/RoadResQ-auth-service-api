@@ -17,6 +17,15 @@ spring:
     uri: ${MONGODB_URI}
 
   data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:default}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+      connect-timeout: 500ms
+      timeout: 500ms
     mongodb:
       auto-index-creation: true
 
@@ -42,6 +51,9 @@ spring:
       mail.smtp.writetimeout: 5000
 
 app:
+  membership-cache:
+    enabled: ${MEMBERSHIP_CACHE_ENABLED:false}
+    ttl-seconds: ${MEMBERSHIP_CACHE_TTL_SECONDS:30}
   jwt-secret: ${JWT_SECRET}
   secret-key: ${SECRET_KEY}
   encryption-secret-key: ${ENCRYPTION_SECRET_KEY}

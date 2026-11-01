@@ -128,6 +128,9 @@ public class AdminService {
     Admin admin = adminRepository.findByUserIdAndDeleted(user.getId(), false)
             .orElseThrow(() -> new ResourceNotFoundException("Admin profile not found"));
 
+    if (!admin.isActive() || !user.isActive() || !user.isVerified() || user.isDeleted()) {
+      throw new UnauthorizedException("Admin account is inactive or unavailable");
+    }
     return mapToResponse(admin, user);
   }
 
@@ -232,6 +235,10 @@ public class AdminService {
     claims.put("adminId", admin.getId());
     claims.put("email", user.getEmailAddress());
     claims.put("userType", "ADMIN");
+    claims.put("servicePlatformType", userService.getRequestedServicePlatformType().name());
+    claims.put("userRole", admin.isSuperAdmin() ? "SUPER_ADMIN" : "ADMIN");
+    claims.put("auth", admin.isSuperAdmin()
+            ? List.of("ROLE_ADMIN", "ROLE_SUPER_ADMIN") : List.of("ROLE_ADMIN"));
     return claims;
   }
 

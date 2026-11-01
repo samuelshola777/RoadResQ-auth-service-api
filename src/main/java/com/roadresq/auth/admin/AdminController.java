@@ -2,6 +2,7 @@ package com.roadresq.auth.admin;
 
 
 import com.roadresq.auth.admin.request.*;
+import com.roadresq.auth.utils.ApiResponse;
 import com.roadresq.auth.admin.response.AdminAuthResponse;
 import com.roadresq.auth.admin.response.AdminResponse;
 import com.roadresq.auth.utils.exception.InvalidOperationException;
@@ -58,6 +59,13 @@ public class AdminController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/private/platform-access")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<AdminResponse>> checkPlatformAccess(
+            @RequestAttribute("validatedProfile") AdminResponse profile) {
+        return ResponseEntity.ok(new ApiResponse<>(true, "Admin access verified", profile));
+    }
+
     @GetMapping("/private/me")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<AdminResponse> getCurrentAdminProfile() {
@@ -65,7 +73,7 @@ public class AdminController {
     }
 
     @PostMapping("/private")
-   
+
     public ResponseEntity<AdminResponse> createAdmin(
             @Valid @RequestBody AdminCreateRequest request
     ) {
@@ -75,13 +83,13 @@ public class AdminController {
     }
 
     @GetMapping("/private")
-   
+
     public ResponseEntity<List<AdminResponse>> getAdmins() {
         return ResponseEntity.ok(adminService.getAdmins());
     }
 
     @GetMapping("/private/{adminId}")
-   
+
     public ResponseEntity<AdminResponse> getAdminById(
             @PathVariable("adminId") String adminId
     ) {
@@ -89,7 +97,7 @@ public class AdminController {
     }
 
     @PutMapping("/private/{adminId}")
-   
+
     public ResponseEntity<AdminResponse> updateAdmin(
             @PathVariable("adminId") String adminId,
             @Valid @RequestBody AdminUpdateRequest request
@@ -100,7 +108,7 @@ public class AdminController {
     }
 
     @PatchMapping("/private/{adminId}/activate")
-   
+
     public ResponseEntity<AdminResponse> activateAdmin(
             @PathVariable("adminId") String adminId
     ) {
@@ -108,7 +116,7 @@ public class AdminController {
     }
 
     @PatchMapping("/private/{adminId}/deactivate")
-   
+
     public ResponseEntity<AdminResponse> deactivateAdmin(
             @PathVariable("adminId") String adminId
     ) {
@@ -116,7 +124,7 @@ public class AdminController {
     }
 
     @DeleteMapping("/private/{adminId}")
-   
+
     public ResponseEntity<Void> deleteAdmin(
             @PathVariable("adminId") String adminId
     ) {
@@ -125,19 +133,19 @@ public class AdminController {
     }
 
     @GetMapping("/private/count")
-   
+
     public ResponseEntity<Long> countAllAdmins() {
         return ResponseEntity.ok(adminService.countAllAdmins());
     }
 
     @GetMapping("/private/count/active")
-   
+
     public ResponseEntity<Long> countActiveAdmins() {
         return ResponseEntity.ok(adminService.countActiveAdmins());
     }
 
     @GetMapping("/private/count/inactive")
-   
+
     public ResponseEntity<Long> countInactiveAdmins() {
         return ResponseEntity.ok(adminService.countInactiveAdmins());
     }
