@@ -161,7 +161,8 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
                 }
                 case "ADMIN" -> {
                     var profile = adminService.getCurrentAdminProfile();
-                    matches = userId.equals(profile.userId()) && claims.get("adminId", String.class).equals(profile.adminId());
+                    matches = userId.equals(profile.userId()) && claims.get("adminId", String.class).equals(profile.adminId())
+                            && adminService.isCurrentToken(claims);
                     request.setAttribute("validatedProfile", profile);
                 }
                 default -> matches = false;

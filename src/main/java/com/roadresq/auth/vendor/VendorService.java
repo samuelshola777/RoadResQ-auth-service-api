@@ -40,6 +40,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class VendorService {
     private final VendorRepository vendorRepository;
+    private final com.roadresq.auth.adminActivity.AdminActivityService adminActivityService;
+    private final com.roadresq.auth.platformMemberShip.PlatformMemberShipRepository membershipRepository;
     private final UserService userService;
     private final UserOtpService userOtpService;
     private final JwtService jwtService;
@@ -359,6 +361,11 @@ public class VendorService {
         log.info("Updating eligibility for vendor ID: {} to {}", vendorId, request != null ? request.eligibility() : "null");
         Vendor vendor = findVendorById(vendorId);
         User user = findVendorUserById(vendor.getUserId());
+        if (userService.getRequestedServicePlatformType() != com.roadresq.auth.utils.ServicePlatformType.ROAD_RESQ ||
+                !membershipRepository.existsByUserIdAndUserTypeAndServicePlatformType(user.getId(), UserType.VENDOR, com.roadresq.auth.utils.ServicePlatformType.ROAD_RESQ)) {
+            throw new InvalidOperationException("A Road ResQ vendor membership is required");
+        }
+        String before = String.valueOf(vendor.getEligibility());
         Eligibility next = request.eligibility();
 
         if (next == null) {
@@ -382,6 +389,7 @@ public class VendorService {
         vendor.setReviewedAt(LocalDateTime.now());
         touch(vendor);
 
+        adminActivityService.record("VENDOR_REVIEWED", vendorId, clean(request.reason()), before, next.name());
         log.info("Vendor eligibility updated for ID: {} to: {}", vendor.getId(), next);
         return VendorResponse.from(vendor, user);
     }

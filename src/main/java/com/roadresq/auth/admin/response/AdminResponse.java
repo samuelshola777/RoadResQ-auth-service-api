@@ -28,6 +28,7 @@ public record AdminResponse(
 
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        LocalDateTime lastLoginAt
+        LocalDateTime lastLoginAt,
+        boolean superAdmin
 ) {
 }

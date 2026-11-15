@@ -116,10 +116,10 @@ public class CustomExceptionHandler {
 //    }
 //
 //
-////    @ExceptionHandler(ExpiredJwtException.class)
-////    public final ResponseEntity<CustomApiResponse> handleExpiredJWTException(){
-////        return new ResponseEntity<>(new CustomApiResponse("Expired Jwt"), HttpStatus.FORBIDDEN);
-////    }
+    ////    @ExceptionHandler(ExpiredJwtException.class)
+    ////    public final ResponseEntity<CustomApiResponse> handleExpiredJWTException(){
+    ////        return new ResponseEntity<>(new CustomApiResponse("Expired Jwt"), HttpStatus.FORBIDDEN);
+    ////    }
 //
 //    @ExceptionHandler(ErrorProcessingFileException.class)
 //    public final ResponseEntity<CustomApiResponse> errorProcessingFileException(ErrorProcessingFileException exception,  Object data){
@@ -149,4 +149,9 @@ public class CustomExceptionHandler {
 //        return new ResponseEntity<>(new CustomApiResponse(exception.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
 //    }
 
+
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse> handleConcurrentChange(org.springframework.dao.OptimisticLockingFailureException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiResponse<>(false, "The record changed. Reload before trying again", null));
+    }
 }

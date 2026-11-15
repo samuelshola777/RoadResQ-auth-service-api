@@ -5,69 +5,79 @@ import com.roadresq.auth.userauthmgt.user.UserService;
 import com.roadresq.auth.utils.Gender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class DefaultAdminSeeder {
-
-    private static final String DEFAULT_ADMIN_EMAIL = "drive.relay14@gmail.com";
-    private static final String DEFAULT_ADMIN_PASSWORD = "password";
 
     private final AdminRepository adminRepository;
     private final UserService userService;
 
+    @Value("${ADMIN_BOOTSTRAP_EMAIL:drive.relay14@gmail.com}") private String email;
+    @Value("${ADMIN_BOOTSTRAP_PASSWORD:password}") private String password;
+
     @EventListener(ApplicationReadyEvent.class)
+    @Transactional
     public void seedDefaultSuperAdmin() {
-        try {
-            boolean superAdminExists = adminRepository.existsByIsSuperAdmin(true);
 
-            if (superAdminExists) {
-                log.info("✅ Admin already exists");
-                return;
-            }
-
-            boolean emailExists = userService.existsByEmailAddressIgnoreCase(DEFAULT_ADMIN_EMAIL);
-
-            if (emailExists) {
-                log.info("✅ Admin already exists");
-                return;
-            }
-
-            User user = userService.createAdminUserFromAdminModule(
-                    "Healthee",
-                    "FruitJuices",
-                    DEFAULT_ADMIN_EMAIL,
-                    DEFAULT_ADMIN_PASSWORD,
-                    null,
-                    null,
-                    "#0B5FFF",
-                    Gender.MALE,
-                    true
-            );
-
-            Admin admin = Admin.builder()
-                    .userId(user.getId())
-                    .active(true)
-                    .deleted(false)
-                    .lastLoginAt(null)
-                    .deletedAt(null)
-                    .build();
-
-            admin.setCreatedAt(LocalDateTime.now());
-            admin.setUpdatedAt(LocalDateTime.now());
-
-            adminRepository.save(admin);
-
-            log.info("✅ Default super admin created successfully. Email: {}", DEFAULT_ADMIN_EMAIL);
-
-        } catch (Exception exception) {
-            log.error("❌ Failed to seed default super admin", exception);
+        if (adminRepository.countByDeleted(false) > 0) {
+            log.info("Admin already exists. Skipping default admin creation");
+            return;
         }
+
+        if (email == null || email.isBlank()) {
+            throw new IllegalStateException(
+                    "ADMIN_BOOTSTRAP_EMAIL is required to create the first admin"
+            );
+        }
+
+        if (password == null
+                || password.isBlank()
+                || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new IllegalStateException(
+                    "Bootstrap password is required "
+                            + "and must not exceed 72 UTF-8 bytes"
+            );
+        }
+
+        if (userService.existsByEmailAddressIgnoreCase(email.trim())) {
+            throw new IllegalStateException(
+                    "Bootstrap email already belongs to a user. "
+                            + "Review that account before creating an admin"
+            );
+        }
+
+        User user = userService.createAdminUserFromAdminModule(
+                "Road ResQ",
+                "Administrator",
+                email.trim().toLowerCase(Locale.ROOT),
+                password,
+                null,
+                null,
+                "#0862FF",
+                Gender.MALE,
+                true
+        );
+
+        Admin admin = Admin.builder()
+                .userId(user.getId())
+                .active(true)
+                .deleted(false)
+                .build();
+
+        admin.setSuperAdmin(true);
+
+        adminRepository.save(admin);
+
+        log.info("Default super admin created successfully");
     }
 }

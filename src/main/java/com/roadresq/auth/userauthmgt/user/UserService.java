@@ -697,7 +697,9 @@ public class UserService {
 			throw new InvalidOperationException(ApiResponseMessages.ERROR_USER_ACCOUNT_NOT_VERIFIED);
 		}
 
-		return userOtpService.generateOtpForUser(user.getId(), UserOtpType.PASSWORD_RESET);
+		Map<String, String> otp = userOtpService.generateOtpForUser(user.getId(), UserOtpType.PASSWORD_RESET);
+		emailSenderService.sendAdminPasswordResetEmail(user.getEmailAddress(), user.getId(), otp.get("otp"), user.getFirstName() + " " + user.getLastName());
+		return otp;
 	}
 
 	public void resetAdminPasswordFromAdminModule(String userId, String otp, String newPassword) {

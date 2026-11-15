@@ -1,19 +1,13 @@
 package com.roadresq.auth.admin.request;
 
-
-
-
-
 import com.roadresq.auth.utils.Gender;
-
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Past;
 import java.time.LocalDate;
-
 public record AdminUpdateRequest(
-        String firstName,
-        String lastName,
-        String phoneNumber,
-        String profilePictureUrl,
-        LocalDate dateOfBirth,
-        Gender gender
-) {
-}
+        @Size(min = 1, max = 80) String firstName,
+        @Size(min = 1, max = 80) String lastName,
+        @Pattern(regexp = "\\+?[0-9]{7,15}") String phoneNumber,
+        @Size(max = 500) String profilePictureUrl,
+        @Past LocalDate dateOfBirth, Gender gender) {}

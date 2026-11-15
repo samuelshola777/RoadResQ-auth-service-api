@@ -23,6 +23,7 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService adminService;
+    private final com.roadresq.auth.adminActivity.AdminActivityService adminActivityService;
 
     @PostMapping("/public/login")
     public ResponseEntity<AdminAuthResponse> login(
@@ -74,6 +75,7 @@ public class AdminController {
 
     @PostMapping("/private")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<AdminResponse> createAdmin(
             @Valid @RequestBody AdminCreateRequest request
     ) {
@@ -84,12 +86,14 @@ public class AdminController {
 
     @GetMapping("/private")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<List<AdminResponse>> getAdmins() {
         return ResponseEntity.ok(adminService.getAdmins());
     }
 
     @GetMapping("/private/{adminId}")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<AdminResponse> getAdminById(
             @PathVariable("adminId") String adminId
     ) {
@@ -98,6 +102,7 @@ public class AdminController {
 
     @PutMapping("/private/{adminId}")
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<AdminResponse> updateAdmin(
             @PathVariable("adminId") String adminId,
             @Valid @RequestBody AdminUpdateRequest request
@@ -109,6 +114,7 @@ public class AdminController {
 
     @PatchMapping("/private/{adminId}/activate")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<AdminResponse> activateAdmin(
             @PathVariable("adminId") String adminId
     ) {
@@ -117,6 +123,7 @@ public class AdminController {
 
     @PatchMapping("/private/{adminId}/deactivate")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<AdminResponse> deactivateAdmin(
             @PathVariable("adminId") String adminId
     ) {
@@ -125,6 +132,7 @@ public class AdminController {
 
     @DeleteMapping("/private/{adminId}")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<Void> deleteAdmin(
             @PathVariable("adminId") String adminId
     ) {
@@ -134,19 +142,79 @@ public class AdminController {
 
     @GetMapping("/private/count")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<Long> countAllAdmins() {
         return ResponseEntity.ok(adminService.countAllAdmins());
     }
 
     @GetMapping("/private/count/active")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<Long> countActiveAdmins() {
         return ResponseEntity.ok(adminService.countActiveAdmins());
     }
 
     @GetMapping("/private/count/inactive")
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<Long> countInactiveAdmins() {
         return ResponseEntity.ok(adminService.countInactiveAdmins());
     }
+
+    @GetMapping("/private/portal/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ApiResponse<Map<String, Object>> analytics(@RequestParam(defaultValue = "30") int days) {
+        return new ApiResponse<>(true, "Admin analytics retrieved", adminService.getPortalAnalytics(days));
+    }
+
+    @GetMapping("/private/portal/summary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ApiResponse<Map<String, Long>> summary() {
+        return new ApiResponse<>(true, "Admin summary retrieved", adminService.getPortalSummary());
+    }
+
+    @GetMapping("/private/portal/members")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ApiResponse<com.roadresq.auth.utils.PaginatedData> members(
+            @RequestParam com.roadresq.auth.userauthmgt.user.UserType role,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String eligibility,
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+        return new ApiResponse<>(true, "Platform members retrieved", adminService.getPlatformMembers(role, search, eligibility, page, size));
+    }
+
+    @PatchMapping("/private/portal/memberships/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ApiResponse<Void> updateAccess(@PathVariable String id, @Valid @RequestBody AdminAccessRequest request) {
+        adminService.updatePlatformAccess(id, request);
+        return new ApiResponse<>(true, "Road ResQ access updated", null);
+    }
+
+    @GetMapping("/private/portal/activity")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ApiResponse<com.roadresq.auth.utils.PaginatedData> activity(@RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+        return new ApiResponse<>(true, "Admin activity retrieved", adminActivityService.getActivity(page, size));
+    }
+
+    @PatchMapping("/private/profile")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ApiResponse<AdminResponse> updateProfile(@Valid @RequestBody AdminUpdateRequest request) {
+        return new ApiResponse<>(true, "Profile updated", adminService.updateMyProfile(request));
+    }
+
+    @PatchMapping("/private/change-password")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ApiResponse<Void> changePassword(@Valid @RequestBody com.roadresq.auth.userauthmgt.user.request.PasswordChangeRequest request) {
+        adminService.changeMyPassword(request);
+        return new ApiResponse<>(true, "Password changed. Sign in again", null);
+    }
+
+
+    @GetMapping("/private/portal/admins")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<com.roadresq.auth.utils.PaginatedData> adminPage(@RequestParam(defaultValue = "1") int page,
+                                                                        @RequestParam(defaultValue = "20") int size) {
+        return new ApiResponse<>(true, "Administrators retrieved", adminService.getAdminPage(page, size));
+    }
+
 }
