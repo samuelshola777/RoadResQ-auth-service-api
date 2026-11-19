@@ -1,6 +1,37 @@
-target/
+# Local environment files
 .env
+.env.*
+*.env
 env.properties
-uploads/
-*.log
+env.*.properties
+env-*.properties
+env.properties.*
+
+# Keep shareable configuration examples
+!.env.example
+!env.properties.example
+
+# Credentials and private keys
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Java build output
+target/
+build/
+out/
+*.class
+
+# IDE files
 .idea/
+*.iml
+.vscode/
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db

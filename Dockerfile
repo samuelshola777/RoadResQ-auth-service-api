@@ -13,5 +13,5 @@ RUN groupadd --system roadresq \
 
 COPY --from=build /build/target/*.jar /app/service.jar
 USER roadresq
-EXPOSE 8081
+EXPOSE 8071
 ENTRYPOINT ["java", "-jar", "/app/service.jar"]
