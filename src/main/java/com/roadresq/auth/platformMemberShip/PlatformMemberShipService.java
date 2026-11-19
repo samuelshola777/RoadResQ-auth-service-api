@@ -1,5 +1,6 @@
 package com.roadresq.auth.platformMemberShip;
 
+import com.roadresq.auth.utils.appsecurity.AccountAccessCache;
 import com.roadresq.auth.userauthmgt.user.UserType;
 import com.roadresq.auth.utils.ServicePlatformType;
 import com.roadresq.auth.utils.exception.InvalidInputException;
@@ -27,6 +28,7 @@ import java.util.List;
 @Slf4j
 public class PlatformMemberShipService {
 
+    private final AccountAccessCache accountAccessCache;
     private final PlatformMemberShipRepository platformMemberShipRepository;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -56,7 +58,7 @@ public class PlatformMemberShipService {
                 .build();
 
         try {
-            PlatformMemberShip saved = platformMemberShipRepository.insert(memberShip);
+            PlatformMemberShip saved = withAccessChange(memberShip, () -> platformMemberShipRepository.insert(memberShip));
             invalidateAfterCommit(saved);
             log.info("Successfully created platform membership with ID: {}", saved.getId());
             return saved;
@@ -112,7 +114,7 @@ public class PlatformMemberShipService {
         memberShip.setActive(isActive);
 
         try {
-            PlatformMemberShip saved = platformMemberShipRepository.save(memberShip);
+            PlatformMemberShip saved = withAccessChange(memberShip, () -> platformMemberShipRepository.save(memberShip));
             invalidateAfterCommit(saved);
             log.info("Successfully updated platform membership ID: {}. New status: {}", saved.getId(), saved.isActive());
             return saved;
@@ -127,7 +129,10 @@ public class PlatformMemberShipService {
         PlatformMemberShip memberShip = getPlatformMemberShipById(id);
 
         try {
-            platformMemberShipRepository.delete(memberShip);
+            withAccessChange(memberShip, () -> {
+                platformMemberShipRepository.delete(memberShip);
+                return null;
+            });
             invalidateAfterCommit(memberShip);
             log.info("Successfully deleted platform membership ID: {}", id);
         } catch (OptimisticLockingFailureException exception) {
@@ -173,6 +178,11 @@ public class PlatformMemberShipService {
             }
         }
         return active;
+    }
+
+    private <T> T withAccessChange(PlatformMemberShip membership, java.util.function.Supplier<T> change) {
+        return membership.getServicePlatformType() == ServicePlatformType.ROAD_RESQ
+                ? accountAccessCache.changeAccess(membership.getUserId(), change) : change.get();
     }
 
     private boolean canUseRedis() {

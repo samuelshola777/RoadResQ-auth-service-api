@@ -1,5 +1,6 @@
 package com.roadresq.auth.customer;
 
+import com.roadresq.auth.utils.appsecurity.AccountAccessCache;
 import com.roadresq.auth.customer.request.*;
 import com.roadresq.auth.customer.response.CustomerAuthResponse;
 import com.roadresq.auth.customer.response.CustomerForgotPasswordResponse;
@@ -47,6 +48,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CustomerService {
 
+    private final AccountAccessCache accountAccessCache;
     private final CustomerRepository customerRepository;
     private final UserService userService;
     private final UserOtpService userOtpService;
@@ -246,6 +248,8 @@ public class CustomerService {
             log.info("Login failed: Could not generate tokens for email: {}", savedUser.getEmailAddress());
             throw new ErrorProcessingRequestException("Unable to create the sign-in session");
         }
+
+        accountAccessCache.warmOnLogin(accessToken);
 
         log.info("Customer login completed successfully for email: {}", savedUser.getEmailAddress());
 
@@ -518,7 +522,8 @@ public class CustomerService {
         user.setUpdatedAt(LocalDateTime.now());
 
         log.info("Customer activated successfully for ID: {}", customerId);
-        return CustomerResponse.from(customerRepository.save(customer), userService.updateUser(user));
+        return accountAccessCache.changeAccess(user.getId(), () ->
+                CustomerResponse.from(customerRepository.save(customer), userService.updateUser(user)));
     }
 
     @Transactional
@@ -533,7 +538,8 @@ public class CustomerService {
         user.setUpdatedAt(LocalDateTime.now());
 
         log.info("Customer deactivated successfully for ID: {}", customerId);
-        return CustomerResponse.from(customerRepository.save(customer), userService.updateUser(user));
+        return accountAccessCache.changeAccess(user.getId(), () ->
+                CustomerResponse.from(customerRepository.save(customer), userService.updateUser(user)));
     }
 
     @Transactional
@@ -558,8 +564,10 @@ public class CustomerService {
         user.setDeletedAt(deletedAt);
         user.setUpdatedAt(deletedAt);
 
-        customerRepository.save(customer);
-        userService.updateUser(user);
+        accountAccessCache.changeAccess(user.getId(), () -> {
+            customerRepository.save(customer);
+            return userService.updateUser(user);
+        });
 
         fileUploadService.deleteFileAsync(user.getProfilePictureUrl());
     }

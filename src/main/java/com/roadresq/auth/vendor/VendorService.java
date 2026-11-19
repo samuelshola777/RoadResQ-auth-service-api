@@ -1,5 +1,6 @@
 package com.roadresq.auth.vendor;
 
+import com.roadresq.auth.utils.appsecurity.AccountAccessCache;
 import com.roadresq.auth.vendor.request.*;
 import com.roadresq.auth.vendor.response.*;
 import com.roadresq.auth.utils.Eligibility;
@@ -39,6 +40,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class VendorService {
+    private final AccountAccessCache accountAccessCache;
     private final VendorRepository vendorRepository;
     private final com.roadresq.auth.adminActivity.AdminActivityService adminActivityService;
     private final com.roadresq.auth.platformMemberShip.PlatformMemberShipRepository membershipRepository;
@@ -212,6 +214,8 @@ public class VendorService {
             log.info("Login failed: Could not generate tokens for email: {}", savedUser.getEmailAddress());
             throw new ErrorProcessingRequestException("Unable to create the sign-in session");
         }
+
+        accountAccessCache.warmOnLogin(accessToken);
 
         log.info("Vendor login successful for email: {}", savedUser.getEmailAddress());
 

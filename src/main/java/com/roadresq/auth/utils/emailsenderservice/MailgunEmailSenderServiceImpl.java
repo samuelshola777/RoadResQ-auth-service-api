@@ -7,15 +7,17 @@ import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.thymeleaf.context.Context;
+import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
-// Keep the existing bean name for compatibility with UserService.
-// The SMTP provider comes from spring.mail settings, including Brevo.
 @Service("mailgunEmailSenderServiceImpl")
 public class MailgunEmailSenderServiceImpl implements EmailSenderService {
 
@@ -23,15 +25,18 @@ public class MailgunEmailSenderServiceImpl implements EmailSenderService {
             LoggerFactory.getLogger(MailgunEmailSenderServiceImpl.class);
 
     private final JavaMailSender mailSender;
+    private final SpringTemplateEngine templateEngine;
     private final String configuredSender;
     private final boolean mailEnabled;
 
     public MailgunEmailSenderServiceImpl(
             JavaMailSender mailSender,
+            SpringTemplateEngine templateEngine,
             @Value("${app.mail-from:}") String configuredSender,
             @Value("${app.mail-enabled:false}") boolean mailEnabled
     ) {
         this.mailSender = mailSender;
+        this.templateEngine = templateEngine;
         this.configuredSender = configuredSender;
         this.mailEnabled = mailEnabled;
     }
@@ -54,84 +59,52 @@ public class MailgunEmailSenderServiceImpl implements EmailSenderService {
     public void sendAccountActivationEmail(
             String emailAddress, String id, String fullName, String otp
     ) {
-        sendCodeEmail(emailAddress, fullName, otp,
-                "Verify your Healthee account",
-                "Enter this code in the app to verify your email address.");
+        String body = templateEngine.process("account-activation", codeContext(fullName, otp));
+        sendHtmlEmail(configuredSender, emailAddress, "Road-ResQ | Verify your email", body);
     }
 
     @Override
     public void sendPasswordChangeEmail(
             String emailAddress, String userId, String otp, String fullName
     ) {
-        sendCodeEmail(emailAddress, fullName, otp,
-                "Confirm your Healthee password change",
-                "Enter this code in the app to confirm your password change.");
+        String body = templateEngine.process("password-change", codeContext(fullName, otp));
+        sendHtmlEmail(configuredSender, emailAddress, "Road-ResQ | Confirm your password change", body);
     }
 
     @Override
     public void sendPasswordResetEmail(
             String emailAddress, String userId, String otp, String fullName
     ) {
-        sendCodeEmail(emailAddress, fullName, otp,
-                "Reset your Healthee password",
-                "Enter this code in the app to reset your password.");
-    }
-
-    @Override
-    public void sendBuyerPasswordResetEmail(
-            String emailAddress, String userId, String otp, String fullName
-    ) {
-        sendPasswordResetEmail(emailAddress, userId, otp, fullName);
+        String body = templateEngine.process("password-reset", codeContext(fullName, otp));
+        sendHtmlEmail(configuredSender, emailAddress, "Road-ResQ | Reset your password", body);
     }
 
     @Override
     public void sendAdminPasswordResetEmail(
             String emailAddress, String userId, String otp, String fullName
     ) {
-        sendCodeEmail(emailAddress, fullName, otp,
-                "Reset your Healthee admin password",
-                "Enter this code in the admin portal to reset your password.");
+        String body = templateEngine.process("admin-password-reset", codeContext(fullName, otp));
+        sendHtmlEmail(configuredSender, emailAddress, "Road-ResQ | Reset your admin password", body);
     }
 
     @Override
     public void sendAccountSetupCompletionEmail(String emailAddress, String fullName) {
-        String body = emailBody(fullName, "Your account is ready",
-                "Your Healthee account setup is complete. You can now sign in.", null);
-        sendHtmlEmail(configuredSender, emailAddress, "Welcome to Healthee", body);
+        String body = templateEngine.process("account-setup-completion", emailContext(fullName));
+        sendHtmlEmail(configuredSender, emailAddress, "Welcome to Road-ResQ", body);
     }
 
     @Override
     public void sendAdminAccountActivationEmail(
             String emailAddress, String fullName, String password, String otp
     ) {
-        // Preserve the interface; passwords must never be included in emails.
-        sendCodeEmail(emailAddress, fullName, otp,
-                "Verify your Healthee admin account",
-                "Enter this code in the admin portal to verify your email address.");
-    }
-
-    @Override
-    public void sendDirectorAccountActivationEmail(
-            String emailAddress, String id, String otp
-    ) {
-        sendAccountActivationEmail(emailAddress, id, null, otp);
-    }
-
-    private void sendCodeEmail(
-            String recipient, String fullName, String otp, String title, String instruction
-    ) {
-        if (isBlank(otp)) {
-            throw new ErrorProcessingRequestException("Email verification code is missing");
-        }
-        sendHtmlEmail(configuredSender, recipient, title,
-                emailBody(fullName, title, instruction, otp));
+        // The password parameter is retained for interface compatibility.
+        String body = templateEngine.process("admin-account-activation", codeContext(fullName, otp));
+        sendHtmlEmail(configuredSender, emailAddress, "Road-ResQ | Verify your admin account", body);
     }
 
     private void deliver(
             String sender, String recipient, String subject, String body, boolean html
     ) {
-
-
         String from = isBlank(sender) ? configuredSender : sender;
         if (isBlank(from) || isBlank(recipient) || isBlank(subject) || body == null
                 || hasLineBreak(from) || hasLineBreak(recipient) || hasLineBreak(subject)) {
@@ -144,54 +117,48 @@ public class MailgunEmailSenderServiceImpl implements EmailSenderService {
             fromAddress.validate();
             toAddress.validate();
 
+            boolean brandedHtml = html && body.contains("cid:roadresq-tow-truck");
+            ClassPathResource truck = new ClassPathResource("email/tow-truck.png");
+            if (brandedHtml && !truck.exists()) {
+                throw new ErrorProcessingRequestException("Missing email image: email/tow-truck.png");
+            }
+
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(
-                    message, false, StandardCharsets.UTF_8.name());
+                    message, brandedHtml, StandardCharsets.UTF_8.name());
             helper.setValidateAddresses(true);
             helper.setFrom(fromAddress);
             helper.setTo(toAddress);
             helper.setSubject(subject);
             helper.setText(body, html);
+
+            if (brandedHtml) {
+                helper.addInline("roadresq-tow-truck", truck, "image/png");
+            }
+
             mailSender.send(message);
         } catch (MessagingException | MailException | IllegalArgumentException exception) {
             // Do not log message bodies, OTPs, passwords or SMTP credentials.
             log.warn("Email delivery failed: {}", exception.getClass().getSimpleName());
-            System.out.println(exception.getMessage()+" Email Sending Exception 😢😢😢😢😢");
             throw new ErrorProcessingRequestException(
                     "Unable to send email. Please try again later.");
         }
     }
 
-    private String emailBody(String fullName, String title, String instruction, String otp) {
+    private Context emailContext(String fullName) {
         String name = isBlank(fullName) ? "there" : fullName.trim();
-        String code = otp == null ? "" :
-                "<p style='padding:16px;background:#edf8ef;color:#176534;"
-                        + "font-size:28px;font-weight:bold;letter-spacing:4px;'>"
-                        + escape(otp) + "</p>"
-                        + "<p>Use this code before it expires. Do not share it with anyone.</p>"
-                        + "<p>If you did not request this, you can ignore this email.</p>";
-
-        return "<!doctype html><html lang='en'><head><meta charset='UTF-8'></head>"
-                + "<body style='margin:0;padding:24px;background:#f5f7f5;"
-                + "font-family:Arial,sans-serif;color:#25352b;'>"
-                + "<div style='max-width:560px;margin:auto;padding:28px;"
-                + "background:#ffffff;border-radius:12px;'>"
-                + "<p style='color:#176534;font-size:22px;font-weight:bold;'>HEALTHEE</p>"
-                + "<h2>" + escape(title) + "</h2>"
-                + "<p>Hello " + escape(name) + ",</p>"
-                + "<p>" + escape(instruction) + "</p>"
-                + code + "<p>The Healthee team</p></div></body></html>";
+        Context context = new Context(Locale.ENGLISH);
+        context.setVariable("greeting", "Hi " + name + ",");
+        return context;
     }
 
-    private static String escape(String value) {
-        if (value == null) {
-            return "";
+    private Context codeContext(String fullName, String otp) {
+        if (isBlank(otp)) {
+            throw new ErrorProcessingRequestException("Email verification code is missing");
         }
-        return value.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        Context context = emailContext(fullName);
+        context.setVariable("otp", otp);
+        return context;
     }
 
     private static boolean isBlank(String value) {

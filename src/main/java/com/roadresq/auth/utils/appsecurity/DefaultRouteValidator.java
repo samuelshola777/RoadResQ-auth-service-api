@@ -57,20 +57,21 @@ public class DefaultRouteValidator {
         );
     }
 
-    public Predicate<HttpServletRequest> isCustomerSecured = req -> {
-        String uri = req.getRequestURI();
-        return (uri.equals("/api/v1/customer/private") || uri.startsWith("/api/v1/customer/private/"))
-                && !uri.equals("/api/v1/customer/private/admin")
-                && !uri.startsWith("/api/v1/customer/private/admin/");
-    };
+    private static boolean under(String uri, String prefix) {
+        return uri.equals(prefix) || uri.startsWith(prefix + "/");
+    }
 
-    public Predicate<HttpServletRequest> isVendorSecured = req -> {
-        String uri = req.getRequestURI();
-        return (uri.equals("/api/v1/vendor/private")
-                || uri.startsWith("/api/v1/vendor/private/"))
-                && !uri.equals("/api/v1/vendor/private/admin")
-                && !uri.startsWith("/api/v1/vendor/private/admin/");
-    };
+    private static final Pattern RESCUE_PAYMENT =
+            Pattern.compile("^/api/v1/rescue-requests/private/[^/]+/payment(?:/verify)?$");
+
+    public Predicate<HttpServletRequest> isCustomerSecured = req ->
+            (under(req.getRequestURI(), "/api/v1/customer/private")
+                    && !under(req.getRequestURI(), "/api/v1/customer/private/admin"))
+                    || RESCUE_PAYMENT.matcher(req.getRequestURI()).matches();
+
+    public Predicate<HttpServletRequest> isVendorSecured = req ->
+            under(req.getRequestURI(), "/api/v1/vendor/private")
+                    && !under(req.getRequestURI(), "/api/v1/vendor/private/admin");
 
     public Predicate<HttpServletRequest> isAdminSecured = req ->
             matches(req, ADMIN_ENDPOINTS, "admin");

@@ -1,0 +1,5 @@
+if redis.call('SET', KEYS[1], ARGV[1], 'NX') then
+  redis.call('DEL', KEYS[2])
+  return 1
+end
+return 0

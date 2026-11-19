@@ -3,6 +3,7 @@ package com.roadresq.auth.userauthmgt.user;
 
 
 
+import com.roadresq.auth.utils.appsecurity.AccountAccessCache;
 import com.roadresq.auth.admin.request.AdminUpdateRequest;
 import com.roadresq.auth.platformMemberShip.PlatformMemberShipService;
 import com.roadresq.auth.platformMemberShip.PlatformMemberShip;
@@ -40,6 +41,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class UserService {
 
+	private final AccountAccessCache accountAccessCache;
 	private final UserRepository userRepository;
 	private final MongoTemplate mongoTemplate;
 	private final UserOtpService userOtpService;
@@ -300,7 +302,7 @@ public class UserService {
 			throw new InvalidOperationException(ApiResponseMessages.ERROR_ACCOUNT_ALREADY_IN_DESIRED_STATE);
 		}
 		user.setActive(activeStatus);
-		return buildUserResponse(updateUser(user));
+		return buildUserResponse(accountAccessCache.changeAccess(user.getId(), () -> updateUser(user)));
 	}
 
 
@@ -436,7 +438,7 @@ public class UserService {
 		user.setVerifiedAt(LocalDateTime.now());
 		user.setActive(true);
 		user.setVerified(true);
-		return updateUser(user);
+		return accountAccessCache.changeAccess(user.getId(), () -> updateUser(user));
 	}
 
 	public void resendOtp(String emailAddress, UserOtpType userOtpType) {
@@ -482,7 +484,10 @@ public class UserService {
 	public void deleteUserById(String userId) {
 		User user = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException(ApiResponseMessages.ERROR_USER_INVALID_ACCOUNT));
-		userRepository.delete(user);
+		accountAccessCache.changeAccess(user.getId(), () -> {
+			userRepository.delete(user);
+			return null;
+		});
 	}
 
 

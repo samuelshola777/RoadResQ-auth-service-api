@@ -10,63 +10,43 @@ import java.util.regex.Pattern;
 @Component
 public class RouteValidator {
 
-    public static final List<Pattern> openApiEndpoints =
-            List.of(
-                    Pattern.compile(
-                            "^/api/v1/customer/public(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/vendor/public(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/magic/public/.*$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/product/public(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/admin/public(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/utilities/public(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/api/v1/system/public(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/swagger-ui\\.html$"
-                    ),
-                    Pattern.compile(
-                            "^/swagger-ui(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/v3/api-docs(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/v3/api-docs\\.yaml$"
-                    ),
-                    Pattern.compile(
-                            "^/api-docs(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/ws(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/ws-native(?:/.*)?$"
-                    ),
-                    Pattern.compile(
-                            "^/ws-sockjs(?:/.*)?$"
-                    )
-            );
+    private static Pattern prefix(String path) {
+        return Pattern.compile("^" + Pattern.quote(path) + "(?:/.*)?$");
+    }
 
-    public final Predicate<HttpServletRequest> isPublic =
-            request -> openApiEndpoints.stream()
-                    .anyMatch(pattern ->
-                            pattern.matcher(
-                                    request.getRequestURI()
-                            ).matches()
-                    );
+    private static List<Pattern> prefixes(String... paths) {
+        return java.util.Arrays.stream(paths).map(RouteValidator::prefix).toList();
+    }
 
-    public final Predicate<HttpServletRequest> isSecured =
-            request -> !isPublic.test(request);
+    public static final List<Pattern> OPEN_API_ENDPOINTS = prefixes(
+            "/api/v1/customer/public",
+            "/api/v1/vendor/public",
+            "/api/v1/product/public",
+            "/api/v1/admin/public",
+            "/api/v1/utilities/public",
+            "/api/v1/system/public",
+            "/ws",
+            "/ws-native",
+            "/ws-sockjs"
+    );
+
+    private static final List<Pattern> DOCS_AND_TOOLS = List.of(
+            Pattern.compile("^/magic/public(?:/.*)?$"),
+            Pattern.compile("^/swagger-ui\\.html$"),
+            Pattern.compile("^/swagger-ui(?:/.*)?$"),
+            Pattern.compile("^/v3/api-docs(?:/.*)?$"),
+            Pattern.compile("^/v3/api-docs\\.yaml$"),
+            Pattern.compile("^/api-docs(?:/.*)?$")
+    );
+
+    private static final List<Pattern> ALL_OPEN = java.util.stream.Stream
+            .concat(OPEN_API_ENDPOINTS.stream(), DOCS_AND_TOOLS.stream())
+            .toList();
+
+    public final Predicate<HttpServletRequest> isPublic = request -> {
+        String uri = request.getRequestURI();
+        return ALL_OPEN.stream().anyMatch(pattern -> pattern.matcher(uri).matches());
+    };
+
+    public final Predicate<HttpServletRequest> isSecured = isPublic.negate();
 }

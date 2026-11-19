@@ -51,6 +51,9 @@ spring:
       mail.smtp.writetimeout: 5000
 
 app:
+  notification-service-url: ${NOTIFICATION_SERVICE_URL:http://localhost:8073}
+  account-access-cache:
+    enabled: ${ROADRESQ_ACCESS_CACHE_ENABLED:false}
   membership-cache:
     enabled: ${MEMBERSHIP_CACHE_ENABLED:false}
     ttl-seconds: ${MEMBERSHIP_CACHE_TTL_SECONDS:30}
@@ -79,3 +82,19 @@ app:
     enabled: ${SEED_SUPER_ADMIN:false}
     email: ${SUPER_ADMIN_EMAIL:}
     password: ${SUPER_ADMIN_PASSWORD:}
+
+paystack:
+  secret:
+    key: ${PAYSTACK_SECRET_KEY:}
+  webhook:
+    signing-secret: ${PAYSTACK_WEBHOOK_SIGNING_SECRET:}
+flutterwave:
+  secret:
+    key: ${FLUTTERWAVE_SECRET_KEY:}
+  webhook:
+    secret: ${FLUTTERWAVE_WEBHOOK_SECRET:}
+payment:
+  callback:
+    url: ${PAYMENT_CALLBACK_URL:}
+  checkout:
+    portion: ${PAYMENT_CHECKOUT_PORTION:}

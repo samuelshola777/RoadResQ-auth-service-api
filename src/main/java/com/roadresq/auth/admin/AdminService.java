@@ -5,13 +5,18 @@ import com.roadresq.auth.admin.request.*;
 import com.roadresq.auth.admin.response.AdminAuthResponse;
 import com.roadresq.auth.admin.response.AdminForgotPasswordResponse;
 import com.roadresq.auth.admin.response.AdminResponse;
+import com.roadresq.auth.adminActivity.AdminActivityService;
+import com.roadresq.auth.platformMemberShip.PlatformMemberShipRepository;
 import com.roadresq.auth.userauthmgt.user.User;
 import com.roadresq.auth.userauthmgt.user.UserService;
+import com.roadresq.auth.utils.PaginationService;
 import com.roadresq.auth.utils.appsecurity.JwtService;
 import com.roadresq.auth.utils.exception.*;
 import com.roadresq.auth.utils.fileupload.FileUploadService;
+import com.roadresq.auth.vendor.VendorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +32,7 @@ import org.bson.Document;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Set;
@@ -40,11 +46,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AdminService {
 
-    private final com.roadresq.auth.adminActivity.AdminActivityService adminActivityService;
-    private final org.springframework.data.mongodb.core.MongoTemplate mongoTemplate;
-    private final com.roadresq.auth.platformMemberShip.PlatformMemberShipRepository membershipRepository;
-    private final com.roadresq.auth.vendor.VendorService vendorService;
-    private final com.roadresq.auth.utils.PaginationService paginationService;
+    private final AdminActivityService adminActivityService;
+    private final MongoTemplate mongoTemplate;
+    private final PlatformMemberShipRepository membershipRepository;
+    private final VendorService vendorService;
+    private final PaginationService paginationService;
     private final AdminRepository adminRepository;
     private final UserService userService;
     private final JwtService jwtService;
@@ -82,7 +88,7 @@ public class AdminService {
         return mapToResponse(savedAdmin, user);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public AdminResponse createAdmin(AdminCreateRequest request) {
         requireSuperAdmin();
         validateCreateRequest(request);
@@ -115,8 +121,6 @@ public class AdminService {
                 .build();
 
         Admin savedAdmin = adminRepository.save(admin);
-
-
         adminActivityService.record("ADMIN_CREATED", savedAdmin.getId(), null, null, "ACTIVE");
         return mapToResponse(savedAdmin, user);
     }
@@ -178,7 +182,7 @@ public class AdminService {
         return mapToResponse(admin, user);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public AdminResponse updateAdmin(String adminId, AdminUpdateRequest request) {
         if (request == null) {
             throw new InvalidInputException("Request body is required");
@@ -211,7 +215,7 @@ public class AdminService {
         return mapToResponse(savedAdmin, updatedUser);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public AdminResponse activateAdmin(String adminId) {
         requireSuperAdmin();
         Admin admin = findAdminById(adminId);
@@ -229,7 +233,7 @@ public class AdminService {
         return mapToResponse(savedAdmin, user);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public AdminResponse deactivateAdmin(String adminId) {
         requireSuperAdmin();
         Admin admin = findAdminById(adminId);
@@ -242,7 +246,7 @@ public class AdminService {
         return mapToResponse(savedAdmin, user);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public void deleteAdmin(String adminId) {
         requireSuperAdmin();
         Admin admin = findAdminById(adminId);
@@ -397,7 +401,7 @@ public class AdminService {
         );
     }
 
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public void resetAdminPassword(AdminResetPasswordRequest request) {
         if (request == null) {
             throw new InvalidInputException("Request body is required");
@@ -477,12 +481,12 @@ public class AdminService {
                 && profile.superAdmin() == roles.contains("ROLE_SUPER_ADMIN");
     }
 
-    @org.springframework.transaction.annotation.Transactional
+     @Transactional
     public AdminResponse updateMyProfile(AdminUpdateRequest request) {
         return updateAdmin(getCurrentAdminProfile().adminId(), request);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+     @Transactional
     public void changeMyPassword(PasswordChangeRequest request) {
         AdminResponse actor = getCurrentAdminProfile();
         User user = userService.getAdminUserByIdFromAdminModule(actor.userId());
@@ -609,7 +613,7 @@ public class AdminService {
         return new PaginatedData((int) Math.ceil((double) total / size), rows.size(), total, rows);
     }
 
-    @org.springframework.transaction.annotation.Transactional
+     @Transactional
     public void updatePlatformAccess(String membershipId, AdminAccessRequest request) {
         requireRoadPlatform();
         PlatformMemberShip member = membershipRepository.findById(membershipId)
